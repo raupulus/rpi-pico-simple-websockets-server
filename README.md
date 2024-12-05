@@ -1,19 +1,22 @@
-# Proyecto: Plantilla básica para comenzar proyectos en Raspberry Pi Pico con Micropython
+# Raspberry Pi Pico Servidor de websockets básico
 
-El contenido de este repositorio tiene la única finalidad de utilizarse como
-plantilla al crear otros proyectos reutilizando partes que suelo necesitar
-de forma recurrente para acelerar el desarrollo.
+Este repositorio contiene un ejemplo de servidor websockets para la
+raspberry pi pico de forma que podemos enviarle/recibir datos desde/hacia 
+nuestro equipo u otros dispositivos para comunicarnos ya sea leyendo sensores
+o actualizando la información mostrada en una pantalla.
+
+Un ejemplo del uso que yo le di lo puedes ver aquí: ["Pantalla para contador de pulsaciones usando websockets"](https://youtu.be/Tvh2LaYt-_s)
+
+Puedes utilizar este código de ejemplo para adaptarlo a tu proyecto.
 
 Sitio web del autor: [https://raupulus.dev](https://raupulus.dev)
 
 ![Imagen del Proyecto](docs/images/img1.jpg "Imagen Principal de raspberry pi pico w")
 
-Repository [https://gitlab.com/raupulus/rpi-pico-template-project-micropython](https://gitlab.com/raupulus/rpi-pico-template-project-micropython)
+Repository [https://gitlab.com/raupulus/rpi-pico-simple-websockets-server](https://gitlab.com/raupulus/rpi-pico-simple-websockets-server)
 
-Una de las ventajas es que en **Models** ya disponemos de dos modelos que
-suelen ser fundamentales para mi: 
+Modelo para acciones que suelo usar recurrente en raspberry pi pico:
 
-- API: Para interactuar fácilmente con mis apis enviando/recibiendo datos
 - RpiPico: Representa a la raspberry: incluye conectividad wireless, gestión de
   ADC integrado, puede obtener información de la red y conectar a redes 
   alternativas por si nos desplazamos (usamos en varias ubicaciones) o 
@@ -39,7 +42,7 @@ que usamos como base **.env.example.py**
 
 - **src/**: Código fuente del proyecto.
 - **src/Models**: Modelos/Clases para separar entidades que intervienen.
-- **docs/**: Documentación adicional, esquemas y guías de instalación.
+- **docs/**: Documentación adicional e imágenes.
 
 ## Instalación
 
@@ -49,8 +52,26 @@ que usamos como base **.env.example.py**
 2. **Cargar el Código:**
    - Descarga o clona este repositorio.
    - Copia el archivo *.env.example.py* a *env.py* y rellena los datos para 
-     conectar al wireless además de la ruta para subir datos a tu API.
+     conectar al wireless.
    - Copia los archivos en la carpeta `src/` a la Raspberry Pi Pico.
+
+## Probar conexión al socket
+
+He dejado un script que actúa como cliente y lo podemos ejecutar en nuestro
+propio equipo para comprobar que la raspberry pi pico responde correctamente
+a las peticiones.
+
+Este archivo es **client_example.py**, tienes que editar la dirección IP a la
+que conectarás añadiendo la de tu raspberry pi pico en tu red local y ya puedes
+ejecutarlo así desde el terminal:
+
+```bash
+python client_example.py
+```
+
+Si todo va bien, deberías recibir por el terminal un "status: ok" además de 
+todos los datos enviados.
+
 
 ## Esquema de la raspberry pi pico
 
