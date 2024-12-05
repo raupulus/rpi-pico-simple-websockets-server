@@ -1,7 +1,11 @@
 import gc
 from time import sleep_ms
-from Models.Api import Api
+
+from machine import Pin
+
 from Models.RpiPico import RpiPico
+import usocket as socket
+import ujson as json
 
 # Importo variables de entorno
 import env
@@ -12,110 +16,155 @@ gc.enable()
 DEBUG = env.DEBUG
 
 # Rpi Pico Model Instance
-rpi = RpiPico(ssid=env.AP_NAME, password=env.AP_PASS, debug=DEBUG,
-                     alternatives_ap=env.ALTERNATIVES_AP, hostname=env.HOSTNAME)
+rpi: RpiPico = RpiPico(ssid=env.AP_NAME, password=env.AP_PASS, debug=DEBUG,
+                       alternatives_ap=env.ALTERNATIVES_AP,
+                       hostname=env.HOSTNAME)
+
+led1 = Pin(2, Pin.OUT)
+led2 = Pin(3, Pin.OUT)
 
 sleep_ms(100)
 
 # Debug para mostrar el estado del wifi
 rpi.wifi_debug()
 
-# Ejemplo Mostrando temperatura de cpu tras 5 lecturas (+1 al instanciar modelo)
-print('Leyendo temperatura por 1a vez:', str(rpi.get_cpu_temperature()))
-sleep_ms(100)
-print('Leyendo temperatura por 2a vez:', str(rpi.get_cpu_temperature()))
-sleep_ms(100)
-print('Leyendo temperatura por 3a vez:', str(rpi.get_cpu_temperature()))
-sleep_ms(100)
-print('Leyendo temperatura por 4a vez:', str(rpi.get_cpu_temperature()))
-sleep_ms(100)
-print('Leyendo temperatura por 5a vez:', str(rpi.get_cpu_temperature()))
-sleep_ms(100)
-print('Mostrando estadisticas de temperatura para CPU:', str(rpi.get_cpu_temperature_stats()))
-
-sleep_ms(100)
-
-# Ejemplo instanciando SPI en bus 0.
-spi0 = rpi.set_spi(2, 3, 4, 5, 0)
-
-sleep_ms(100)
-
-# Ejemplo instanciando I2C en bus 0.
-i2c0 = rpi.set_i2c(20, 21, 0, 400000)
-address = 0x03 # Dirección de un dispositivo i2c
-# Ya podemos usar nuestro sensor con la dirección almacenada en "address"
-
-# Ejemplo escaneando todos los dispositivos encontrados por I2C.
-print('Dispositivos encontrados por I2C:', i2c0.scan())
-
-# Ejemplo asociando un callback al recibir +3.3v en el gpio 2
-#rpi.set_callback_to_pin(2, "LOW", tu_callback)
-rpi.set_callback_to_pin(2, lambda p: print("Se ejecuta el callback"), "LOW")
-
-# Ejemplo leyendo batería externa (¡Cuidado! usa divisor de tensión, max 3,3v)
-rpi.set_external_battery(28)
-rpi.read_external_battery()
-
-sleep_ms(200)
-
-# Preparo la instancia para la comunicación con la API
-api = Api(controller=rpi, url=env.API_URL, path=env.API_PATH,
-          token=env.API_TOKEN, device_id=env.DEVICE_ID, debug=env.DEBUG)
-
-
 # Pausa preventiva al desarrollar (ajustar, pero si usas dos hilos puede ahorrar tiempo por bloqueos de hardware ante errores)
-sleep_ms(3000)
+sleep_ms(2000)
 
 
-def thread1 ():
+def handle_client (conn: socket.socket) -> None:
     """
-    Segundo hilo.
+    Procesa la recepción de datos desde un cliente WebSocket.
 
-    En este hilo colocamos otras operaciones con cuidado frente a la
-    concurrencia.
+    Recibe un mensaje en formato JSON, lo procesa, enciende o apaga el LED
+    correspondiente según el contenido, y responde con un estado de éxito.
 
-    Recomiendo utilizar sistemas de bloqueo y pruebas independientes con las
-    funcionalidades que vayas a usar en paralelo. Se puede romper la ejecución.
+    Args:
+        conn (socket.socket): La conexión con el cliente WebSocket.
+
+    Returns:
+        None
     """
+    conn.setblocking(False)
+    conn.settimeout(5.0)  # Espera por 5 segundos si no se recibe nada
 
-    if env.DEBUG:
-        print('')
-        print('Inicia hilo principal (thread1)')
+    try:
+        while True:
+            data = conn.recv(1024)
+
+            if data:
+                data = data.decode('utf-8')
+
+                if DEBUG:
+                    print("Datos recibidos: ", data)
+
+                # Procesar el JSON recibido
+                data_dict = json.loads(data)
+
+                # Verificar los datos y encender o apagar los LEDs
+                action = data_dict.get("action")
+                led = data_dict.get("led")
+
+                if led == "integrated":
+                    if action == "on":
+                        rpi.led_on()
+                    elif action == "off":
+                        rpi.led_off()
+                elif led == "1":
+                    if action == "on":
+                        led1.on()
+                    elif action == "off":
+                        led1.off()
+                elif led == "2":
+                    if action == "on":
+                        led2.on()
+                    elif action == "off":
+                        led2.off()
+
+                # Responder al cliente con un JSON de éxito
+                response = json.dumps({ 'status': 'ok', 'data': data_dict })
+                conn.send(response.encode('utf-8'))
+
+            else:
+                conn.close()
+                break
+        conn.close()
+
+    except Exception as e3:
+        print("Error en handle_client(): ", e3)
 
 
-def thread0 ():
+def server () -> None:
     """
-    Primer hilo, flujo principal de la aplicación.
-    En este hilo colocamos toda la lógica principal de funcionamiento.
-    """
+    Función principal que crea el servidor WebSocket, espera por conexiones entrantes
+    y maneja las solicitudes de los clientes.
 
+    Este servidor escucha en la dirección 0.0.0.0 en el puerto 80 y acepta conexiones
+    de clientes WebSocket.
+
+    Returns:
+        None
+    """
+    ip = "0.0.0.0"
+    port = 80
+    s = socket.socket()
+
+    while True:
+        try:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind((ip, port))
+            s.listen(1)
+
+            while True:
+                try:
+                    conn, addr = s.accept()
+
+                    if DEBUG:
+                        print('Conexión establecida con:', addr)
+
+                    # Al existir cliente se maneja la conexión
+                    handle_client(conn)
+
+                except Exception as e1:
+                    if DEBUG:
+                        print('Error en servidor durante accept():', e1)
+
+        except Exception as e2:
+            if DEBUG:
+                print('Error al crear o escuchar el servidor en start():', e2)
+
+
+def init () -> None:
+    """
+    Función inicial que arranca el servidor WebSocket y maneja el flujo de
+    ejecución principal de la aplicación.
+
+    Returns:
+        None
+    """
     if env.DEBUG:
         print('')
         print('Inicia hilo principal (thread0)')
 
+    server()
 
-    #print("Batería externa:", rpi.read_external_battery())
-
-    print('')
-    print('Termina el primer ciclo del hilo 0')
-    print('')
-
-    sleep_ms(10000)
+    if env.DEBUG:
+        print('')
+        print('Termina el primer ciclo del hilo 0')
+        print('')
 
 
 while True:
     try:
-        thread0()
+        init()
     except Exception as e:
         if env.DEBUG:
-            print('Error: ', e)
-    finally:
-        if env.DEBUG:
+            print('Error en el flujo principal:', e)
             print('Memoria antes de liberar: ', gc.mem_free())
 
         gc.collect()
 
         if env.DEBUG:
             print("Memoria después de liberar:", gc.mem_free())
-
+    finally:
         sleep_ms(5000)
